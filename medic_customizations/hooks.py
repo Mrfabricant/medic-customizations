@@ -28,6 +28,17 @@ app_license = "mit"
 # app_include_css = "/assets/medic_customizations/css/medic_customizations.css"
 # app_include_js = "/assets/medic_customizations/js/medic_customizations.js"
 
+# Fixtures
+# ------------------
+# Custom Field(s) that back the quality-control warehouse gate (see doc_events below)
+
+fixtures = [
+	{
+		"doctype": "Custom Field",
+		"filters": [["name", "=", "Warehouse-custom_qc_required_on_exit"]],
+	},
+]
+
 # include js, css files in header of web template
 # web_include_css = "/assets/medic_customizations/css/medic_customizations.css"
 # web_include_js = "/assets/medic_customizations/js/medic_customizations.js"
@@ -137,13 +148,24 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Stock Entry": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.warehouse_gate.validate_stock_entry_qc_gate"
+	},
+	"Delivery Note": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.delivery_gate.validate_delivery_note_qc_gate"
+	},
+	"Sales Invoice": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.sales_invoice_gate.validate_sales_invoice_qc_gate"
+	},
+}
+
+# Migration Events
+# ----------------
+# Runs after fixtures are synced, so the custom_qc_required_on_exit Custom Field
+# already exists on Warehouse by the time this seeds/updates the warehouse tree.
+
+after_migrate = ["medic_customizations.medic_customizations.setup.create_warehouses"]
 
 # Scheduled Tasks
 # ---------------

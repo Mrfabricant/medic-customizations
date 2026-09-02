@@ -1,0 +1,14 @@
+[
+ {
+  "doctype": "Custom Field",
+  "name": "Warehouse-custom_qc_required_on_exit",
+  "dt": "Warehouse",
+  "fieldname": "custom_qc_required_on_exit",
+  "fieldtype": "Check",
+  "label": "QC Required On Exit",
+  "insert_after": "is_rejected_warehouse",
+  "default": "0",
+  "bold": 1,
+  "description": "If checked, a submitted Stock Entry moving stock out of this warehouse must reference a passed (Accepted) Quality Inspection for each item/batch, or submission is blocked."
+ }
+]
