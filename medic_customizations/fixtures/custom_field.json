@@ -1,6 +1,17 @@
 [
  {
   "doctype": "Custom Field",
+  "name": "Item-custom_produced_qc_template",
+  "dt": "Item",
+  "fieldname": "custom_produced_qc_template",
+  "fieldtype": "Link",
+  "options": "Quality Inspection Template",
+  "label": "Produced-Output QC Template (100% Control)",
+  "insert_after": "quality_inspection_template",
+  "description": "If set, a Manufacture Stock Entry producing this item can't be submitted until every unit passed an In Process Quality Inspection using this template. Only 100%-control templates are allowed. Purchased stock is not affected - it is inspected on receipt instead."
+ },
+ {
+  "doctype": "Custom Field",
   "name": "Warehouse-custom_qc_required_on_exit",
   "dt": "Warehouse",
   "fieldname": "custom_qc_required_on_exit",
@@ -9,6 +20,6 @@
   "insert_after": "is_rejected_warehouse",
   "default": "0",
   "bold": 1,
-  "description": "If checked, a submitted Stock Entry moving stock out of this warehouse must reference a passed (Accepted) Quality Inspection for each item/batch, or submission is blocked."
+  "description": "If checked, a submitted Stock Entry moving stock out of this warehouse must reference a passed (Accepted) Quality Inspection of the type relevant to the area (Incoming for Incoming Inspection, In Process for production areas), or submission is blocked. In production areas the inspection must cover every unit; raw material consumed by a work order is not blocked."
  }
 ]

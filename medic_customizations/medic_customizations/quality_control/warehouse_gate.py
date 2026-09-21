@@ -1,43 +1,94 @@
 import frappe
 from frappe import _
 
+from medic_customizations.medic_customizations.quality_control.inspection import (
+	assert_inspected,
+	build_produced_entries,
+	get_produced_qc_template,
+)
+from medic_customizations.medic_customizations.setup import INCOMING_INSPECTION
 
-def get_qc_gated_warehouses() -> set[str]:
-	return set(
-		frappe.get_all(
-			"Warehouse",
-			filters={"custom_qc_required_on_exit": 1},
-			pluck="name",
+# Stock Entry purposes whose source rows are raw material *consumed* by a production stage. The
+# gate is output-based, so consuming an input from a controlled area is never blocked - the stage's
+# own output is checked instead (see validate_produced_output).
+CONSUMPTION_PURPOSES = (
+	"Manufacture",
+	"Material Consumption for Manufacture",
+	"Material Transfer for Manufacture",
+)
+
+
+def get_qc_gated_warehouses() -> dict[str, str]:
+	"""{warehouse name: warehouse_name without company suffix} for every warehouse flagged QC Required On Exit."""
+	return {
+		w.name: w.warehouse_name
+		for w in frappe.get_all(
+			"Warehouse", filters={"custom_qc_required_on_exit": 1}, fields=["name", "warehouse_name"]
 		)
-	)
-
-
-def has_passed_quality_inspection(reference_type: str, reference_name: str, item_code: str, batch_no: str | None) -> bool:
-	filters = {
-		"reference_type": reference_type,
-		"reference_name": reference_name,
-		"item_code": item_code,
-		"status": "Accepted",
-		"docstatus": 1,
 	}
-	if batch_no:
-		filters["batch_no"] = batch_no
-
-	return bool(frappe.db.exists("Quality Inspection", filters))
 
 
 def validate_stock_entry_qc_gate(doc, method=None):
-	gated_warehouses = get_qc_gated_warehouses()
-	if not gated_warehouses:
+	validate_produced_output(doc)
+	validate_controlled_area_exit(doc)
+
+
+def validate_produced_output(doc):
+	"""Output-based gate: a stage's output can't be booked as produced until every unit passed QC.
+
+	Fires only on a Manufacture entry's finished-item rows, so it is event-based: stock that
+	entered through a Purchase Receipt (e.g. a bought flat connector, already inspected on
+	receipt) never triggers a produced-output requirement, and no sourcing flag is needed.
+
+	Which items are checkpoints, and which 100% template each needs, comes from
+	Item.custom_produced_qc_template. The pump chain has ONE consolidated checkpoint (INS.036,
+	after Install PCBA) - only that item carries a template, the earlier steps (soldering,
+	mechanical assembly, battery connector) are deliberately not gated on their own.
+	Job Card completion is not gated yet: no BOM has operations, so no Job Cards exist.
+	"""
+	if doc.purpose != "Manufacture":
 		return
 
+	entries = build_produced_entries(
+		[row for row in doc.items if row.is_finished_item],
+		lambda row: row.transfer_qty,
+		_("cannot be booked as produced"),
+	)
+	assert_inspected(doc, entries, inspection_type="In Process")
+
+
+def validate_controlled_area_exit(doc):
+	"""Stock leaving a QC-flagged warehouse needs the inspection that is relevant to that area.
+
+	- Incoming Inspection holds bought goods: an Incoming inspection, lot-level (sampling is the
+	  accepted practice there).
+	- Clean Room / ESD Area hold produced WIP: an In Process inspection covering every unit.
+	  Raw material consumed by a work order is skipped, and so are checkpoint items - their
+	  output was already inspected 100% when it was booked, so a second inspection here would
+	  just duplicate the consolidated checkpoint.
+	"""
+	gated = get_qc_gated_warehouses()
+	if not gated:
+		return
+
+	incoming, in_process = [], []
 	for row in doc.items:
-		if row.s_warehouse not in gated_warehouses:
+		warehouse_name = gated.get(row.s_warehouse)
+		if warehouse_name is None:
 			continue
 
-		if not has_passed_quality_inspection("Stock Entry", doc.name, row.item_code, row.get("batch_no")):
-			frappe.throw(
-				_(
-					"Row #{0}: Item {1} cannot leave warehouse {2} without a passed Quality Inspection referencing this Stock Entry."
-				).format(row.idx, frappe.bold(row.item_code), frappe.bold(row.s_warehouse))
-			)
+		entry = {
+			"idx": row.idx,
+			"item_code": row.item_code,
+			"batch_no": row.get("batch_no"),
+			"qty": row.transfer_qty,
+			"context": _("cannot leave warehouse {0}").format(frappe.bold(row.s_warehouse)),
+		}
+
+		if warehouse_name == INCOMING_INSPECTION:
+			incoming.append(entry)
+		elif doc.purpose not in CONSUMPTION_PURPOSES and not get_produced_qc_template(row.item_code):
+			in_process.append(entry)
+
+	assert_inspected(doc, incoming, inspection_type="Incoming", full_coverage=False)
+	assert_inspected(doc, in_process, inspection_type="In Process")

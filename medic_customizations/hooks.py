@@ -30,12 +30,18 @@ app_license = "mit"
 
 # Fixtures
 # ------------------
-# Custom Field(s) that back the quality-control warehouse gate (see doc_events below)
+# Custom Field(s) that back the quality-control gates (see doc_events below)
 
 fixtures = [
 	{
 		"doctype": "Custom Field",
-		"filters": [["name", "=", "Warehouse-custom_qc_required_on_exit"]],
+		"filters": [
+			[
+				"name",
+				"in",
+				["Warehouse-custom_qc_required_on_exit", "Item-custom_produced_qc_template"],
+			]
+		],
 	},
 ]
 
@@ -158,14 +164,27 @@ doc_events = {
 	"Sales Invoice": {
 		"before_submit": "medic_customizations.medic_customizations.quality_control.sales_invoice_gate.validate_sales_invoice_qc_gate"
 	},
+	"Subcontracting Receipt": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.subcontracting_gate.validate_subcontracting_receipt_qc_gate"
+	},
+	"Item": {
+		"validate": "medic_customizations.medic_customizations.quality_control.item_gate.validate_produced_qc_template"
+	},
 }
 
 # Migration Events
 # ----------------
-# Runs after fixtures are synced, so the custom_qc_required_on_exit Custom Field
-# already exists on Warehouse by the time this seeds/updates the warehouse tree.
+# Runs after fixtures are synced, so the QC Custom Fields already exist on Warehouse and Item
+# by the time this seeds/updates the warehouse tree and the produced-output templates.
 
-after_migrate = ["medic_customizations.medic_customizations.setup.create_warehouses"]
+after_migrate = [
+	"medic_customizations.medic_customizations.setup.create_warehouses",
+	"medic_customizations.medic_customizations.setup.create_pre_sterilization_templates",
+	"medic_customizations.medic_customizations.setup.set_produced_qc_templates",
+	"medic_customizations.medic_customizations.setup.setup_sterilization_subcontracting",
+	"medic_customizations.medic_customizations.dashboard_setup.create_company_dashboard",
+	"medic_customizations.medic_customizations.workspace_setup.create_operations_workspace",
+]
 
 # Scheduled Tasks
 # ---------------
