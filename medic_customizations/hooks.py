@@ -180,6 +180,7 @@ doc_events = {
 after_migrate = [
 	"medic_customizations.medic_customizations.setup.create_warehouses",
 	"medic_customizations.medic_customizations.setup.create_pre_sterilization_templates",
+	"medic_customizations.medic_customizations.setup.set_flat_connector_incoming_criteria",
 	"medic_customizations.medic_customizations.setup.set_produced_qc_templates",
 	"medic_customizations.medic_customizations.setup.setup_sterilization_subcontracting",
 	"medic_customizations.medic_customizations.dashboard_setup.create_company_dashboard",

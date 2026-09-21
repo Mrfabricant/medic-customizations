@@ -35,6 +35,18 @@ GATING_TEMPLATES = frozenset(
 NON_BLOCKING_TEMPLATE_CODES = ("INS.046",)
 
 
+# Incoming inspection is normally lot-level: a sample is enough to accept a purchased lot. Items listed
+# here are the exception - every unit received must be inspected, exactly like the production gates.
+#
+# MDI200058 (Flat connector): the client confirmed its incoming inspection is done at 100%. That
+# differs from INS.039's written text (1% sampling); their real practice wins.
+#
+# Do NOT widen this to incoming inspection in general. The Semi-Finished Dressing incoming check
+# (INS.051) is AQL sampling per PR.016 and the client has said nothing about changing it. Add an item
+# here only when the client has confirmed 100% for that specific item.
+FULL_COVERAGE_INCOMING_ITEMS = frozenset({"MDI200058"})
+
+
 def is_non_blocking_template(template: str | None) -> bool:
 	return bool(template) and any(code in template for code in NON_BLOCKING_TEMPLATE_CODES)
 

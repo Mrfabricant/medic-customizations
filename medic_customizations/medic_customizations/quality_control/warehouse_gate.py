@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 
 from medic_customizations.medic_customizations.quality_control.inspection import (
+	FULL_COVERAGE_INCOMING_ITEMS,
 	assert_inspected,
 	build_produced_entries,
 	get_produced_qc_template,
@@ -61,7 +62,8 @@ def validate_controlled_area_exit(doc):
 	"""Stock leaving a QC-flagged warehouse needs the inspection that is relevant to that area.
 
 	- Incoming Inspection holds bought goods: an Incoming inspection, lot-level (sampling is the
-	  accepted practice there).
+	  accepted practice there) - except the items in FULL_COVERAGE_INCOMING_ITEMS (the flat
+	  connector), whose incoming inspection is done at 100% and must cover every unit.
 	- Clean Room / ESD Area hold produced WIP: an In Process inspection covering every unit.
 	  Raw material consumed by a work order is skipped, and so are checkpoint items - their
 	  output was already inspected 100% when it was booked, so a second inspection here would
@@ -71,7 +73,7 @@ def validate_controlled_area_exit(doc):
 	if not gated:
 		return
 
-	incoming, in_process = [], []
+	incoming, incoming_every_unit, in_process = [], [], []
 	for row in doc.items:
 		warehouse_name = gated.get(row.s_warehouse)
 		if warehouse_name is None:
@@ -86,9 +88,13 @@ def validate_controlled_area_exit(doc):
 		}
 
 		if warehouse_name == INCOMING_INSPECTION:
-			incoming.append(entry)
+			if row.item_code in FULL_COVERAGE_INCOMING_ITEMS:
+				incoming_every_unit.append(entry)
+			else:
+				incoming.append(entry)
 		elif doc.purpose not in CONSUMPTION_PURPOSES and not get_produced_qc_template(row.item_code):
 			in_process.append(entry)
 
 	assert_inspected(doc, incoming, inspection_type="Incoming", full_coverage=False)
+	assert_inspected(doc, incoming_every_unit, inspection_type="Incoming")
 	assert_inspected(doc, in_process, inspection_type="In Process")

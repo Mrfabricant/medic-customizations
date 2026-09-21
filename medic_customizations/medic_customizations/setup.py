@@ -1,4 +1,6 @@
 import frappe
+from frappe import _
+from frappe.utils import flt
 
 from medic_customizations.medic_customizations.quality_control.inspection import (
 	DRESSING_FINAL_CONTROL,
@@ -172,11 +174,85 @@ def create_pre_sterilization_templates():
 		).insert()
 
 
+# The client confirmed that Flat Connector incoming inspection is done at 100%, not the 1% sampling that
+# INS.039's written text specifies. The criteria text stored on the template rows says so; correct it
+# in place, matching only the literal wording so anything the client edits later is left alone.
+FLAT_CONNECTOR_INCOMING_TEMPLATE = "Incoming Control - Flat Connector (INS.039)"
+
+
+def set_flat_connector_incoming_criteria():
+	for row in frappe.get_all(
+		"Item Quality Inspection Parameter",
+		filters={"parent": FLAT_CONNECTOR_INCOMING_TEMPLATE, "specification": ["like", "%1% sampling%"]},
+		fields=["name", "specification"],
+	):
+		frappe.db.set_value(
+			"Item Quality Inspection Parameter",
+			row.name,
+			"specification",
+			row.specification.replace("1% sampling", "100% inspection"),
+			update_modified=False,
+		)
+
+
 # Sterilization is done by an external supplier, so the sterile items are made through native
 # Subcontracting: Subcontracting Order (service item below) -> "Send to Subcontractor" Stock Entry
 # with the unsterilized item -> Subcontracting Receipt when the sterile item comes back.
 STERILIZATION_SERVICE_ITEM = "MDI300001"
 STERILIZED_TEMPLATES = (DRESSING_FINAL_CONTROL, VIVAFOAM_FINAL_CONTROL)
+
+
+# DEFAULT ASSUMPTION, not measured data: sterilization is a processing step, so one unsterilized
+# unit goes in and one sterile unit comes out (1:1). The imported Lagerkoll BOMs carried a
+# placeholder of 10 per sterile unit, which is wrong. If SunMedic knows the actual yield loss at
+# their sterilizer (some units damaged or rejected in the cycle), set the real quantity on the
+# BOM instead - 1:1 is only the correct baseline while that data is missing. A row is corrected
+# only while it still holds the placeholder value, so a ratio the client sets later is never
+# overwritten by a migrate.
+STERILIZATION_RATIO = 1
+STERILIZATION_PLACEHOLDER_QTY = 10
+
+
+def correct_sterilization_bom_ratio(bom_name: str) -> bool:
+	"""Replace the placeholder quantity on a sterile item's BOM with the 1:1 default.
+
+	The BOM is already submitted, so the rows are corrected directly instead of cancel/amend:
+	cancelling would break the links from the item's default BOM, the Subcontracting BOM and the
+	21 BOMs that consume the item. Every rate is left as it is - ERPNext's own Update Cost would
+	re-price the whole BOM from current valuation rates - and only what depends on the quantity is
+	recomputed: the row's amounts, the BOM totals and the exploded raw-material list (rebuilt by
+	ERPNext from the child BOMs' stored explosions, which re-prices nothing).
+	"""
+	bom = frappe.get_doc("BOM", bom_name)
+	rows = [row for row in bom.items if flt(row.qty) == STERILIZATION_PLACEHOLDER_QTY]
+	if not rows:
+		return False
+
+	for row in rows:
+		row.qty = STERILIZATION_RATIO
+		row.stock_qty = flt(row.qty) * flt(row.conversion_factor or 1)
+		row.qty_consumed_per_unit = flt(row.stock_qty) / flt(bom.quantity)
+		row.amount = flt(row.rate) * flt(row.qty)
+		row.base_amount = flt(row.amount) * flt(bom.conversion_rate)
+		row.db_update()
+
+	bom.raw_material_cost = sum(flt(row.amount) for row in bom.items)
+	bom.base_raw_material_cost = sum(flt(row.base_amount) for row in bom.items)
+	bom.total_cost = flt(bom.operating_cost) + bom.raw_material_cost - flt(bom.scrap_material_cost)
+	bom.base_total_cost = (
+		flt(bom.base_operating_cost) + bom.base_raw_material_cost - flt(bom.base_scrap_material_cost)
+	)
+	bom.update_exploded_items()
+	bom.db_update()
+
+	bom.add_comment(
+		"Info",
+		_(
+			"Quantities of {0} corrected from the placeholder {1} to {2} per sterile unit (default 1:1 "
+			"assumption; adjust for the sterilizer's yield loss if it is known)."
+		).format(", ".join(row.item_code for row in rows), STERILIZATION_PLACEHOLDER_QTY, STERILIZATION_RATIO),
+	)
+	return True
 
 
 def setup_sterilization_subcontracting():
@@ -186,8 +262,9 @@ def setup_sterilization_subcontracting():
 	The service row is flagged "Sourced by Supplier": otherwise ERPNext would ask us to supply the
 	service itself to the sterilizer as if it were a raw material, and the send-out fails because
 	it is not a stock item. The flag is set directly in the database because the BOMs are already
-	submitted; it changes no quantity or structure. The supplier itself, and the supplier
-	warehouse on the Purchase Order, are chosen by the client and are not created here.
+	submitted; it changes no structure. The quantities are corrected to the 1:1 default (see
+	correct_sterilization_bom_ratio). The supplier itself, and the supplier warehouse on the
+	Purchase Order, are chosen by the client and are not created here.
 	"""
 	if not frappe.db.exists("Item", STERILIZATION_SERVICE_ITEM):
 		return
@@ -209,6 +286,8 @@ def setup_sterilization_subcontracting():
 					1,
 					update_modified=False,
 				)
+
+			correct_sterilization_bom_ratio(item.default_bom)
 
 			if frappe.db.exists("Subcontracting BOM", {"finished_good": item_code, "is_active": 1}):
 				continue
