@@ -98,12 +98,13 @@ def get_accepted_inspections(
 	batch_no: str | None = None,
 	inspection_type: str | None = None,
 	template: str | None = None,
+	statuses: tuple[str, ...] = ("Accepted",),
 ) -> list:
 	filters = {
 		"reference_type": reference_type,
 		"reference_name": reference_name,
 		"item_code": item_code,
-		"status": "Accepted",
+		"status": ["in", list(statuses)],
 		"docstatus": 1,
 	}
 	if batch_no:
@@ -123,7 +124,10 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 	"""Block submission unless each entry is backed by an Accepted Quality Inspection on `doc`.
 
 	entries: dicts with idx, item_code, qty (stock UOM), context (why it is gated) and optionally
-	batch_no and template (a specific template the inspection must use).
+	batch_no, template (a specific template the inspection must use) and statuses (the QI statuses
+	that satisfy this entry; defaults to ("Accepted",) - pass ("Accepted", "Rejected") for a row
+	whose purpose is routing already-inspected material, e.g. rejected stock moving to Quarantine,
+	where a completed Rejected inspection is the expected, sufficient outcome).
 
 	full_coverage=True is the per-unit rule: the inspections' Sample Size must add up to the full
 	quantity, so a spot check can't release a whole row. Batch/serial tracking is off, so the
@@ -132,25 +136,27 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 	"""
 	required = {}
 	for entry in entries:
-		key = (entry["item_code"], entry.get("batch_no"), entry.get("template"))
+		statuses = tuple(entry.get("statuses") or ("Accepted",))
+		key = (entry["item_code"], entry.get("batch_no"), entry.get("template"), statuses)
 		if key in required:
 			required[key]["qty"] += flt(entry["qty"])
 		else:
-			required[key] = {**entry, "qty": flt(entry["qty"])}
+			required[key] = {**entry, "qty": flt(entry["qty"]), "statuses": statuses}
 
-	for (item_code, batch_no, template), entry in required.items():
+	for (item_code, batch_no, template, statuses), entry in required.items():
 		inspections = get_accepted_inspections(
-			doc.doctype, doc.name, item_code, batch_no, inspection_type, template
+			doc.doctype, doc.name, item_code, batch_no, inspection_type, template, statuses
 		)
 
 		if not inspections:
 			frappe.throw(
 				_(
-					"Row #{0}: Item {1} {2}. Record an Accepted {3} Quality Inspection{4} referencing this {5}, then submit again."
+					"Row #{0}: Item {1} {2}. Record a {3} {4} Quality Inspection{5} referencing this {6}, then submit again."
 				).format(
 					entry["idx"],
 					frappe.bold(item_code),
 					entry["context"],
+					_(" or ").join(statuses),
 					inspection_type,
 					_(' using the "{0}" template').format(template) if template else "",
 					doc.doctype,

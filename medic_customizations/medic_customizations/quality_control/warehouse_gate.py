@@ -29,6 +29,11 @@ def get_qc_gated_warehouses() -> dict[str, str]:
 	}
 
 
+def get_rejected_warehouses() -> set[str]:
+	"""Warehouse names (with company suffix) flagged as a rejected warehouse, e.g. Quarantine."""
+	return {w.name for w in frappe.get_all("Warehouse", filters={"is_rejected_warehouse": 1}, fields=["name"])}
+
+
 def validate_stock_entry_qc_gate(doc, method=None):
 	validate_produced_output(doc)
 	validate_controlled_area_exit(doc)
@@ -63,7 +68,10 @@ def validate_controlled_area_exit(doc):
 
 	- Incoming Inspection holds bought goods: an Incoming inspection, lot-level (sampling is the
 	  accepted practice there) - except the items in FULL_COVERAGE_INCOMING_ITEMS (the flat
-	  connector), whose incoming inspection is done at 100% and must cover every unit.
+	  connector), whose incoming inspection is done at 100% and must cover every unit. Stock
+	  routed on to a rejected warehouse (Quarantine) only needs the Incoming inspection that
+	  produced that outcome, so a completed Rejected inspection satisfies the gate there too -
+	  requiring Accepted would make it impossible to ever move failed stock into Quarantine.
 	- Clean Room / ESD Area hold produced WIP: an In Process inspection covering every unit.
 	  Raw material consumed by a work order is skipped, and so are checkpoint items - their
 	  output was already inspected 100% when it was booked, so a second inspection here would
@@ -73,6 +81,7 @@ def validate_controlled_area_exit(doc):
 	if not gated:
 		return
 
+	rejected_warehouses = get_rejected_warehouses()
 	incoming, incoming_every_unit, in_process = [], [], []
 	for row in doc.items:
 		warehouse_name = gated.get(row.s_warehouse)
@@ -86,6 +95,8 @@ def validate_controlled_area_exit(doc):
 			"qty": row.transfer_qty,
 			"context": _("cannot leave warehouse {0}").format(frappe.bold(row.s_warehouse)),
 		}
+		if warehouse_name == INCOMING_INSPECTION and row.t_warehouse in rejected_warehouses:
+			entry["statuses"] = ("Accepted", "Rejected")
 
 		if warehouse_name == INCOMING_INSPECTION:
 			if row.item_code in FULL_COVERAGE_INCOMING_ITEMS:
