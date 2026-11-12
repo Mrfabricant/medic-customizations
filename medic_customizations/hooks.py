@@ -91,10 +91,10 @@ fixtures = [
 # ----------
 
 # add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "medic_customizations.utils.jinja_methods",
-# 	"filters": "medic_customizations.utils.jinja_filters"
-# }
+jinja = {
+	# data for the Work Order print formats (FRM.0112 FC set form / generic production form)
+	"methods": ["medic_customizations.medic_customizations.print_formats.work_order_form.work_order_form_context"],
+}
 
 # Installation
 # ------------

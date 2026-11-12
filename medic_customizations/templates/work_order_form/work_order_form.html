@@ -1,0 +1,116 @@
+{#- Work Order form, reproducing the client's paper form FRM.0112-00 (FC SET PACKAGING WORK ORDER/CONTROL FORM).
+    Included by the two Print Formats with `variant` = "frm0112" or "generic"; data from work_order_form_context().
+    Column grids are the docx table grids (twips) converted to percentages, cell spans as on the paper. -#}
+{%- set c = work_order_form_context(doc, variant) -%}
+<style>
+	.print-format { margin-top: 36mm; margin-bottom: 12mm; margin-left: 12.7mm; margin-right: 12.7mm; }
+	.wof, .wof td { font-family: Calibri, Carlito, Arial, "Liberation Sans", "DejaVu Sans", sans-serif; font-size: 9.5pt; color: #000; }
+	.wof table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+	.wof td { border: 1px solid #000; padding: 1.2mm 1.6mm; vertical-align: top; overflow-wrap: normal; word-wrap: normal; }
+	.wof tr { page-break-inside: avoid; }
+	.wof .nw { white-space: nowrap; }
+	.wof .small { font-size: 8.5pt; }
+	.wof td.lbl { font-weight: normal; }
+	.wof .b { font-weight: bold; }
+	.wof .c { text-align: center; }
+	.wof .grey { background: #bfbfbf; }
+	.wof .muted { font-size: 8.5pt; }
+	.wof .sign { color: #000; }
+	.wof .gap { height: 6mm; border: none; }
+	.wof .keep { page-break-inside: avoid; }
+	.wof .warn { border: 2px solid #c00; color: #c00; font-weight: bold; padding: 2mm; margin-bottom: 3mm; text-align: center; }
+	.wof .box { display: inline-block; width: 4mm; height: 4mm; border: 1px solid #000; }
+	.wof ol { margin: 0; padding-left: 6mm; }
+	.wof-h, .wof-h td { font-family: Calibri, Carlito, Arial, "Liberation Sans", "DejaVu Sans", sans-serif; color: #000; }
+	.wof-h table { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1px solid #000; }
+	.wof-h td { padding: 0.4mm 1.2mm; vertical-align: middle; font-size: 9.5pt; }
+	.wof-h .title { font-size: 15pt; font-weight: bold; text-align: center; }
+	.wof-h .k { font-weight: bold; white-space: nowrap; }
+</style>
+
+{#- Repeated on every PDF page (Frappe extracts #header-html); page numbers filled in per page. -#}
+<div id="header-html" class="hidden-pdf">
+	<div class="wof-h">
+		<table>
+			<colgroup><col style="width:25%"><col style="width:40%"><col style="width:17.5%"><col style="width:17.5%"></colgroup>
+			{%- if c.form %}
+			<tr>
+				<td rowspan="5"><img src="{{ c.logo }}" style="width:52mm"></td>
+				<td rowspan="5" class="title">{{ c.form.title }}</td>
+				<td class="k">Document Nr</td><td>:{{ c.form.document_nr }}</td>
+			</tr>
+			<tr><td class="k">Revision Nr</td><td>:{{ c.form.revision_nr }}</td></tr>
+			<tr><td class="k">Revision Date</td><td>:{{ c.form.revision_date }}</td></tr>
+			<tr><td class="k">Published Date</td><td>:{{ c.form.published_date }}</td></tr>
+			<tr><td class="k">Page Nr</td><td>:<span class="page"></span>/<span class="topage"></span></td></tr>
+			{%- else %}
+			<tr>
+				<td rowspan="2"><img src="{{ c.logo }}" style="width:52mm"></td>
+				<td rowspan="2" class="title">WORK ORDER</td>
+				<td class="k">Work Order</td><td style="white-space:nowrap">:{{ c.work_order_no }}</td>
+			</tr>
+			<tr><td class="k">Page Nr</td><td>:<span class="page"></span>/<span class="topage"></span></td></tr>
+			{%- endif %}
+		</table>
+	</div>
+</div>
+
+<div class="wof">
+	{%- if c.wrong_form %}
+	<div class="warn">FRM.0112 is the control form for FC sets with two dressings. {{ doc.production_item }} is not one of them - print the "Work Order Production Form" instead.</div>
+	{%- endif %}
+
+	{#- Table 1 - grid 2122 / 2693 / 2127 / 3811 #}
+	<table class="keep">
+		<colgroup><col style="width:19.7%"><col style="width:25.1%"><col style="width:19.8%"><col style="width:35.4%"></colgroup>
+		<tr style="height:8.4mm"><td>Production Work Order No</td><td class="b">{{ c.work_order_no }}</td><td>Product Description</td><td>{{ c.product_description }}</td></tr>
+		<tr style="height:8.4mm"><td>Product Lot Number</td><td class="b">{{ c.lot_number }}</td><td>Proposed Manufacturing Date</td><td>{{ c.proposed_date }}</td></tr>
+		<tr style="height:8.4mm"><td>Numbers of Products to be manufactured</td><td class="b">{{ c.qty }}</td><td>Process to be performed</td>
+			<td>{% if c.operations %}<ol>{% for op in c.operations %}<li>{{ op }}</li>{% endfor %}</ol>{% endif %}</td></tr>
+		<tr style="height:7.5mm"><td>Order given by<br><span class="muted">Name Surname &nbsp; Date Signature</span></td><td colspan="3"></td></tr>
+	</table>
+	<div style="height:3mm"></div>
+
+	{#- Table 2 - grid 2831 / 1262 / 866 / 158 / 1399 / 714 / 1469 / 1996 #}
+	<table>
+		<colgroup><col style="width:26.5%"><col style="width:11.8%"><col style="width:8.1%"><col style="width:1.5%"><col style="width:13.1%"><col style="width:6.7%"><col style="width:13.7%"><col style="width:18.6%"></colgroup>
+		<tr style="height:6.9mm"><td>Production Starting Date:</td><td colspan="7">{{ c.start_date }}</td></tr>
+		<tr><td colspan="8" class="b">Bill of Material</td></tr>
+		<tr><td colspan="2" class="b">Description</td><td colspan="2" class="b small nw">Quantity</td><td class="b nw">Article No</td><td colspan="2" class="b">Lot No</td><td class="b">Quantity</td></tr>
+		{%- for r in c.bom_rows %}
+		<tr><td colspan="2" style="height:5.7mm">{{ r.description or "&nbsp;" }}</td><td colspan="2">{{ r.quantity or "" }}</td><td>{{ r.article_no or "" }}</td><td colspan="2">{{ r.lot_no or "" }}</td><td>{{ r.quantity_used or "" }}</td></tr>
+		{%- endfor %}
+	</table>
+	{#- same grid, own table so this block never splits across a page break #}
+	<table class="keep" style="margin-top:-1px">
+		<colgroup><col style="width:26.5%"><col style="width:11.8%"><col style="width:8.1%"><col style="width:1.5%"><col style="width:13.1%"><col style="width:6.7%"><col style="width:13.7%"><col style="width:18.6%"></colgroup>
+		<tr style="height:5.7mm"><td colspan="5">Production Ending Date:</td><td colspan="3">{{ c.end_date }}</td></tr>
+		<tr style="height:5.7mm"><td colspan="5" class="grey"></td><td colspan="3">Traceability is recorded by;<br><span class="muted">Name Surname<br>Date Signature</span></td></tr>
+		<tr><td class="b">Production is performed by<br><span style="font-weight:normal">Name/Surname</span></td><td colspan="2" class="b">Activity</td><td colspan="3" class="b">Used Equipment number and Name</td><td colspan="2" class="b">Signature</td></tr>
+		{%- for j in c.jobs %}
+		<tr><td style="height:10.5mm">{{ j.operator or "&nbsp;" }}</td><td colspan="2">{{ j.activity or "" }}</td><td colspan="3">{{ j.equipment or "" }}</td><td colspan="2"></td></tr>
+		{%- endfor %}
+	</table>
+
+	{%- if c.qc_checks %}
+	<div style="height:4mm"></div>
+	{#- Table 3 - grid 1544 / 982 / 555 / 1150 / 114 / 453 / 1575 / 2270 / 1577 / 570 #}
+	<table class="keep">
+		<colgroup><col style="width:14.3%"><col style="width:9.1%"><col style="width:5.1%"><col style="width:10.7%"><col style="width:1.1%"><col style="width:4.2%"><col style="width:14.6%"><col style="width:21%"><col style="width:14.6%"><col style="width:5.3%"></colgroup>
+		<tr style="height:6.9mm"><td colspan="10">Quality Control Instruction Used:</td></tr>
+		<tr style="height:9.2mm"><td colspan="5" class="b">Control Name</td><td colspan="2"></td><td class="b">Number of products Control</td><td colspan="2" class="b">Number of Nonconforming samples</td></tr>
+		{%- for check in c.qc_checks %}
+		<tr style="height:6mm"><td colspan="5">{{ check }}</td><td colspan="2"></td><td></td><td colspan="2"></td></tr>
+		{%- endfor %}
+		<tr style="height:12mm"><td colspan="10">Control By<br><span class="muted">Name-Surname<br>Signature</span></td></tr>
+		<tr style="height:9mm" class="small">
+			<td class="small">Decision about nonconforming Product</td>
+			<td class="small">Accepted</td><td class="c"><span class="box"></span></td>
+			<td class="small">Conditional Use</td><td colspan="2" class="c"><span class="box"></span></td>
+			<td colspan="2" class="small">Definition of the Condition:</td>
+			<td class="small">Rejected</td><td class="c"><span class="box"></span></td>
+		</tr>
+		<tr style="height:28mm"><td colspan="10">Nonconformity Decision is taken by<br><span class="muted">Name-Surname<br>Signature</span></td></tr>
+	</table>
+	{%- endif %}
+</div>

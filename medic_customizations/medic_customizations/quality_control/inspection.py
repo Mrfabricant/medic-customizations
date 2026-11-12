@@ -80,7 +80,9 @@ def row_batches(row, qty) -> list[tuple[str | None, float]]:
 	bundle = row.get("serial_and_batch_bundle")
 	if bundle:
 		per_batch = {}
-		for e in frappe.get_all("Serial and Batch Entry", filters={"parent": bundle}, fields=["batch_no", "qty"]):
+		for e in frappe.get_all(
+			"Serial and Batch Entry", filters={"parent": bundle}, fields=["batch_no", "qty"], order_by="idx"
+		):
 			per_batch[e.batch_no or None] = per_batch.get(e.batch_no or None, 0) + abs(flt(e.qty))
 		if per_batch:
 			return list(per_batch.items())
