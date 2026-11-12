@@ -164,6 +164,12 @@ doc_events = {
 	"Sales Invoice": {
 		"before_submit": "medic_customizations.medic_customizations.quality_control.sales_invoice_gate.validate_sales_invoice_qc_gate"
 	},
+	"Purchase Receipt": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.receipt_gate.validate_receipt_into_incoming_inspection"
+	},
+	"Purchase Invoice": {
+		"before_submit": "medic_customizations.medic_customizations.quality_control.receipt_gate.validate_receipt_into_incoming_inspection"
+	},
 	"Subcontracting Receipt": {
 		"before_submit": "medic_customizations.medic_customizations.quality_control.subcontracting_gate.validate_subcontracting_receipt_qc_gate"
 	},
