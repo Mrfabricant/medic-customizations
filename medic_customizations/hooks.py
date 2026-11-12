@@ -170,6 +170,10 @@ doc_events = {
 	"Item": {
 		"validate": "medic_customizations.medic_customizations.quality_control.item_gate.validate_produced_qc_template"
 	},
+	# PR.015 lot numbers for new batches without a typed Batch ID; inert until an item has Has Batch No
+	"Batch": {
+		"before_insert": "medic_customizations.medic_customizations.traceability.lot_naming.set_batch_lot"
+	},
 }
 
 # Migration Events

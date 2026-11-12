@@ -6,6 +6,7 @@ from medic_customizations.medic_customizations.quality_control.inspection import
 	assert_inspected,
 	build_produced_entries,
 	get_produced_qc_template,
+	row_entries,
 )
 from medic_customizations.medic_customizations.setup import INCOMING_INSPECTION
 
@@ -88,23 +89,21 @@ def validate_controlled_area_exit(doc):
 		if warehouse_name is None:
 			continue
 
-		entry = {
-			"idx": row.idx,
-			"item_code": row.item_code,
-			"batch_no": row.get("batch_no"),
-			"qty": row.transfer_qty,
-			"context": _("cannot leave warehouse {0}").format(frappe.bold(row.s_warehouse)),
-		}
+		extra = {}
 		if warehouse_name == INCOMING_INSPECTION and row.t_warehouse in rejected_warehouses:
-			entry["statuses"] = ("Accepted", "Rejected")
+			extra["statuses"] = ("Accepted", "Rejected")
+		# one entry per batch: a batch-tracked row needs an inspection for each batch it moves
+		entries = row_entries(
+			row, row.transfer_qty, _("cannot leave warehouse {0}").format(frappe.bold(row.s_warehouse)), **extra
+		)
 
 		if warehouse_name == INCOMING_INSPECTION:
 			if row.item_code in FULL_COVERAGE_INCOMING_ITEMS:
-				incoming_every_unit.append(entry)
+				incoming_every_unit += entries
 			else:
-				incoming.append(entry)
+				incoming += entries
 		elif doc.purpose not in CONSUMPTION_PURPOSES and not get_produced_qc_template(row.item_code):
-			in_process.append(entry)
+			in_process += entries
 
 	assert_inspected(doc, incoming, inspection_type="Incoming", full_coverage=False)
 	assert_inspected(doc, incoming_every_unit, inspection_type="Incoming")

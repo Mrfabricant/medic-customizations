@@ -68,6 +68,33 @@ def get_produced_qc_template(item_code: str) -> str | None:
 	return template or None
 
 
+def row_batches(row, qty) -> list[tuple[str | None, float]]:
+	"""[(batch_no, qty in stock UOM)] for one document row.
+
+	A row that picked several batches carries them in a Serial and Batch Bundle and leaves its own
+	batch_no empty, so the bundle is read when there is one. A row filled through the plain Batch No
+	field (Stock Settings "use_serial_batch_fields") gets its bundle only in on_submit - after these
+	before_submit gates - so then the row's batch_no is used. A non-batch item gives [(None, qty)],
+	which is exactly the item-level behaviour from before batches existed.
+	"""
+	bundle = row.get("serial_and_batch_bundle")
+	if bundle:
+		per_batch = {}
+		for e in frappe.get_all("Serial and Batch Entry", filters={"parent": bundle}, fields=["batch_no", "qty"]):
+			per_batch[e.batch_no or None] = per_batch.get(e.batch_no or None, 0) + abs(flt(e.qty))
+		if per_batch:
+			return list(per_batch.items())
+	return [(row.get("batch_no") or None, flt(qty))]
+
+
+def row_entries(row, qty, context: str, **extra) -> list[dict]:
+	"""assert_inspected entries for one row: one entry per batch, so every batch needs its own inspection."""
+	return [
+		{"idx": row.idx, "item_code": row.item_code, "batch_no": batch_no, "qty": batch_qty, "context": context, **extra}
+		for batch_no, batch_qty in row_batches(row, qty)
+	]
+
+
 def build_produced_entries(rows, qty_of, context: str) -> list[dict]:
 	"""assert_inspected entries for the rows whose item carries a produced-output template.
 
@@ -78,16 +105,7 @@ def build_produced_entries(rows, qty_of, context: str) -> list[dict]:
 	for row in rows:
 		template = get_produced_qc_template(row.item_code)
 		if template:
-			entries.append(
-				{
-					"idx": row.idx,
-					"item_code": row.item_code,
-					"batch_no": row.get("batch_no"),
-					"qty": qty_of(row),
-					"template": template,
-					"context": context,
-				}
-			)
+			entries += row_entries(row, qty_of(row), context, template=template)
 	return entries
 
 
@@ -130,9 +148,12 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 	where a completed Rejected inspection is the expected, sufficient outcome).
 
 	full_coverage=True is the per-unit rule: the inspections' Sample Size must add up to the full
-	quantity, so a spot check can't release a whole row. Batch/serial tracking is off, so the
-	sample size is the only record of how many units were actually inspected. Pass False only for
-	lot-level checks (incoming goods), where sampling is the accepted practice.
+	quantity, so a spot check can't release a whole row. Pass False only for lot-level checks
+	(incoming goods), where sampling is the accepted practice.
+
+	Batch-tracked items: entries come per batch (see row_entries), and only an inspection recorded
+	for that same batch counts - coverage and sampling are then per batch/lot. An inspection without
+	a batch never releases a batch.
 	"""
 	required = {}
 	for entry in entries:
@@ -147,6 +168,7 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 		inspections = get_accepted_inspections(
 			doc.doctype, doc.name, item_code, batch_no, inspection_type, template, statuses
 		)
+		item_label = frappe.bold(item_code) + (_(" (batch {0})").format(frappe.bold(batch_no)) if batch_no else "")
 
 		if not inspections:
 			frappe.throw(
@@ -154,7 +176,7 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 					"Row #{0}: Item {1} {2}. Record a {3} {4} Quality Inspection{5} referencing this {6}, then submit again."
 				).format(
 					entry["idx"],
-					frappe.bold(item_code),
+					item_label,
 					entry["context"],
 					_(" or ").join(statuses),
 					inspection_type,
@@ -168,5 +190,5 @@ def assert_inspected(doc, entries: list[dict], *, inspection_type: str, full_cov
 			frappe.throw(
 				_(
 					"Row #{0}: Item {1} {2}. The Accepted Quality Inspection(s) cover {3:g} of {4:g} units - every unit must be inspected. Set the Sample Size to the full quantity."
-				).format(entry["idx"], frappe.bold(item_code), entry["context"], covered, entry["qty"])
+				).format(entry["idx"], item_label, entry["context"], covered, entry["qty"])
 			)
