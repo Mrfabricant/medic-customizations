@@ -18,8 +18,9 @@ Take a backup first (bench --site <site> backup). It refuses to divide a BOM twi
 changes gets an audit comment starting with MARKER, and a BOM carrying it is skipped.
 
 What it changes, per BOM (children before parents):
-- a row's quantity is divided by 10, except the rows listed under ROLL_ROWS and any row whose result
-  would not be a whole number (those are reported as held, not changed);
+- a row's quantity is divided by 10, except the rows listed under ROLL_ROWS, the adhesive strip rows
+  owned by adhesive_strips_fix.py (STRIP_ROWS - so the two scripts can run in either order) and any
+  row whose result would not be a whole number (those are reported as held, not changed);
 - the quantities of the already-corrected sterilization BOMs are not touched;
 - rates of purchased items and every Sourced-by-Supplier flag are left alone. A sub-assembly row's
   rate is not a price: ERPNext derives it from the child BOM's cost per unit, so it is recomputed with
@@ -33,6 +34,7 @@ What it changes, per BOM (children before parents):
 import frappe
 from frappe.utils import flt
 
+from medic_customizations.medic_customizations.lagerkoll.adhesive_strips_fix import STRIP_ROWS
 from medic_customizations.medic_customizations.setup import CHECKPOINT_ITEMS, STERILIZED_TEMPLATES
 
 DIVISOR = 10
@@ -81,11 +83,14 @@ def _children_first(names: list[str]) -> list[str]:
 
 
 def _decide(bom: str, parent_item: str, row, sterilization: set[str]):
-	"""('divide', new_qty) | ('roll', None) | ('held', None) | ('skip', None)."""
+	"""('divide', new_qty) | ('roll', None) | ('strip', None) | ('held', None) | ('skip', None)."""
 	if bom in sterilization:
 		return "skip", None
 	if (parent_item, row.item_code) in ROLL_ROWS:
 		return "roll", None
+	if (parent_item, row.item_code) in STRIP_ROWS:
+		# quantity set by adhesive_strips_fix.py (6 per package), whichever script runs first
+		return "strip", None
 	new_qty = flt(row.qty) / DIVISOR
 	if abs(new_qty - round(new_qty)) > 1e-9 or round(new_qty) < 1:
 		return "held", None
@@ -93,9 +98,21 @@ def _decide(bom: str, parent_item: str, row, sterilization: set[str]):
 
 
 def run(dry_run: bool = True):
+	result = apply()
+	result["summary"]["dry_run"] = dry_run
+	if dry_run:
+		frappe.db.rollback()
+	else:
+		frappe.db.commit()
+	print(result["summary"])
+	return result
+
+
+def apply() -> dict:
+	"""The correction itself, without commit or rollback (run() decides)."""
 	sterilization = _sterilization_boms()
 	names = _children_first(frappe.get_all("BOM", filters={"docstatus": 1}, pluck="name"))
-	touched, report, held, rolls = set(), [], [], []
+	touched, report, held, rolls, strips = set(), [], [], [], []
 
 	for name in names:
 		bom = frappe.get_doc("BOM", name)
@@ -116,6 +133,8 @@ def run(dry_run: bool = True):
 				held.append((name, bom.item, row.item_code, row.item_name, old_qty))
 			elif action == "roll":
 				rolls.append((name, bom.item, row.item_code, row.item_name, old_qty, row.uom))
+			elif action == "strip":
+				strips.append((name, bom.item, row.item_code, old_qty))
 
 			# a sub-assembly's rate is derived from its child BOM's cost per unit (ERPNext's own formula)
 			if row.bom_no and bom.set_rate_of_sub_assembly_item_based_on_bom:
@@ -165,16 +184,11 @@ def run(dry_run: bool = True):
 		report.append({"bom": name, "item": bom.item, "divided": n_divided, "rates": n_rate, "before": cost_before, "after": flt(bom.total_cost)})
 
 	summary = {
-		"dry_run": dry_run,
 		"boms": len(names),
 		"boms_touched": len(touched),
 		"rows_divided": sum(r["divided"] for r in report),
 		"rows_held": len(held),
 		"roll_exceptions": len(rolls),
+		"strip_rows_left_to_adhesive_strips_fix": len(strips),
 	}
-	if dry_run:
-		frappe.db.rollback()
-	else:
-		frappe.db.commit()
-	print(summary)
-	return {"summary": summary, "report": report, "held": held, "rolls": rolls}
+	return {"summary": summary, "report": report, "held": held, "rolls": rolls, "strips": strips}
