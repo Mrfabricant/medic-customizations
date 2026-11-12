@@ -5,7 +5,8 @@ from medic_customizations.medic_customizations.quality_control.inspection import
 
 
 def validate_sales_invoice_qc_gate(doc, method=None):
-	if not doc.update_stock:
+	# no stock moves without update_stock, and a return brings stock back in - nothing to release
+	if not doc.update_stock or doc.get("is_return"):
 		return
 
 	entries = [
